@@ -5,13 +5,13 @@
         public Weapon(int damage = 1, int bullets = 1, int bulletsPerShot = 1)
         {
             if (damage < 0)
-                throw new ArgumentException(nameof(damage) + " is not valid");
+                throw new ArgumentOutOfRangeException(nameof(damage) + " is not valid");
 
             if (bullets < 0)
-                throw new ArgumentException(nameof(bullets) + " is not valid");
+                throw new ArgumentOutOfRangeException(nameof(bullets) + " is not valid");
 
             if (bulletsPerShot < 0)
-                throw new ArgumentException(nameof(bulletsPerShot) + " is not valid");
+                throw new ArgumentOutOfRangeException(nameof(bulletsPerShot) + " is not valid");
 
             Damage = damage;
             Bullets = bullets;
@@ -24,7 +24,7 @@
 
         public void Fire(Player player)
         {
-            if (Bullets <= 0)
+            if (Bullets <= BulletsPerShot)
                 throw new InvalidOperationException();
 
             if (player == null)
@@ -37,35 +37,39 @@
 
     class Player
     {
-        public Player()
-        {
-            Health = new Health();
-        }
+        private readonly Health _health;
 
         public Player(Health health)
         {
-            if (health == null)
-                throw new ArgumentNullException(nameof(health));
-
-            Health = health;
+            _health = health ?? throw new ArgumentNullException(nameof(health));
         }
 
-        public Health Health { get; private set; }
+        public Player() : this(new Health()) { }
+
+        public Health Health => _health;
 
         public void TakeDamage(int damage) => Health.ApplyDamage(damage);
     }
 
     class Health
     {
-        public Health(int minValue = 0, int maxValue = 100)
-        {
-            Initialize(maxValue, minValue, maxValue);
-        }
-
         public Health(int value, int minValue = 0, int maxValue = 100)
         {
-            Initialize(value, minValue, maxValue);
+            if (minValue < 0)
+                throw new ArgumentOutOfRangeException(nameof(minValue) + " is not valid");
+
+            if (maxValue < minValue)
+                throw new ArgumentOutOfRangeException(nameof(maxValue) + " is not valid");
+
+            if (value < minValue || value > maxValue)
+                throw new ArgumentOutOfRangeException(nameof(value) + " is not valid");
+
+            MinValue = minValue;
+            MaxValue = maxValue;
+            Value = value;
         }
+
+        public Health(int minValue = 0, int maxValue = 100) : this(maxValue, minValue, maxValue) { }
 
         public int MinValue { get; private set; } = 0;
         public int MaxValue { get; private set; } = 100;
@@ -74,47 +78,24 @@
         public void ApplyDamage(int damage)
         {
             if (damage < 0)
-                throw new ArgumentException(nameof(damage) + " is not valid");
+                throw new ArgumentOutOfRangeException(nameof(damage) + " is not valid");
 
-            if (damage <= Value)
-                Value -= damage;
-            else
-                Value = MinValue;
-        }
-
-        private void Initialize(int value, int minValue, int maxValue)
-        {
-            if (minValue < 0)
-                throw new ArgumentException(nameof(minValue) + " is not valid");
-            
-            if (maxValue < minValue)
-                throw new ArgumentException(nameof(maxValue) + " is not valid");
-
-            if (value < minValue || value > maxValue)
-                throw new ArgumentException(nameof(value) + " is not valid");
-
-            MinValue = minValue;
-            MaxValue = maxValue;
-            Value = value;
+            Value = Math.Max(Value - damage, MinValue);
         }
     }
 
     class Bot
     {
-        public Bot()
-        {
-            Weapon = new Weapon();
-        }
+        private readonly Weapon _weapon;
 
         public Bot(Weapon weapon)
         {
-            if (weapon == null)
-                throw new ArgumentNullException(nameof(weapon));
-
-            Weapon = weapon;
+            _weapon = weapon ?? throw new ArgumentNullException(nameof(weapon));
         }
 
-        public Weapon Weapon { get; private set; }
+        public Bot() : this(new Weapon()) { }
+
+        public Weapon Weapon => _weapon;
 
         public void OnSeePlayer(Player player) => Weapon.Fire(player);
     }
