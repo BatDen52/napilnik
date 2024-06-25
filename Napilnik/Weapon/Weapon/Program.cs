@@ -37,16 +37,14 @@
 
     class Player
     {
-        private readonly Health _health;
-
         public Player(Health health)
         {
-            _health = health ?? throw new ArgumentNullException(nameof(health));
+            Health = health ?? throw new ArgumentNullException(nameof(health));
         }
 
         public Player() : this(new Health()) { }
 
-        public Health Health => _health;
+        public Health Health { get; }
 
         public void TakeDamage(int damage) => Health.ApplyDamage(damage);
     }
@@ -86,16 +84,14 @@
 
     class Bot
     {
-        private readonly Weapon _weapon;
-
         public Bot(Weapon weapon)
         {
-            _weapon = weapon ?? throw new ArgumentNullException(nameof(weapon));
+            Weapon = weapon ?? throw new ArgumentNullException(nameof(weapon));
         }
 
         public Bot() : this(new Weapon()) { }
 
-        public Weapon Weapon => _weapon;
+        public Weapon Weapon { get; }
 
         public void OnSeePlayer(Player player) => Weapon.Fire(player);
     }
