@@ -26,7 +26,7 @@ namespace HW3.LogWritter
     class Pathfinder
     {
         private readonly string _name;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public Pathfinder(string name, ILogger logger)
         {
@@ -72,7 +72,7 @@ namespace HW3.LogWritter
 
     class FridayLogWritter : ILogger
     {
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public FridayLogWritter(ILogger logger) =>
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -86,7 +86,7 @@ namespace HW3.LogWritter
 
     class MultiLogWritter : ILogger
     {
-        private ILogger[] _loggers;
+        private readonly ILogger[] _loggers;
 
         public MultiLogWritter(params ILogger[] loggers) =>
             _loggers = loggers ?? throw new ArgumentNullException(nameof(loggers));

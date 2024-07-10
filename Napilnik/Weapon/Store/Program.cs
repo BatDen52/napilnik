@@ -19,7 +19,7 @@ namespace HW2.Store
             Console.WriteLine("Warehouse Info:");
             warehouse.ShowInfo();
 
-            Cart cart = shop.GetNewCart();
+            Cart cart = shop.CreateCart();
             cart.Add(iPhone12, 4);
 
             try
@@ -72,42 +72,39 @@ namespace HW2.Store
 
     public class Shop
     {
+        private Warehouse _warehouse;
+
         public Shop(Warehouse warehouse)
         {
             if (warehouse == null)
                 throw new ArgumentNullException();
 
-            Warehouse = warehouse;
+            _warehouse = warehouse;
         }
 
-        public Warehouse Warehouse { get; }
-
-        public Cart GetNewCart()
-        {
-            return new Cart(Warehouse);
-        }
+        public Cart CreateCart() => new Cart(_warehouse);
     }
 
     public class Product
     {
+        private string _title;
+
         public Product(string title)
         {
             if (string.IsNullOrWhiteSpace(title))
                 throw new ArgumentException();
 
-            Title = title;
+            _title = title;
         }
 
-        public string Title { get; private set; }
-
-        public override string ToString() => Title;
+        public override string ToString() => _title;
     }
 
     public class Storage
     {
         private Dictionary<Product, Cell> _products = new();
 
-        public IReadOnlyDictionary<Product, Cell> Products => _products;
+        protected IReadOnlyDictionary<Product, Cell> Products => _products;
 
         public bool HasEnoughProduct(Product product, int neededCount)
         {
@@ -117,10 +114,7 @@ namespace HW2.Store
             if (neededCount < 0)
                 throw new ArgumentOutOfRangeException();
 
-            if (_products.TryGetValue(product, out Cell cell) && cell.Count >= neededCount)
-                return true;
-
-            return false;
+            return _products.TryGetValue(product, out Cell cell) && cell.Count >= neededCount;
         }
 
         public void TakeProducts(Product product, int neededCount)
@@ -140,10 +134,7 @@ namespace HW2.Store
                 Console.WriteLine(cell);
         }
 
-        public void Clear()
-        {
-            _products.Clear();
-        }
+        protected void Clear() => _products.Clear();
 
         protected void Add(Product product, int count)
         {
@@ -177,15 +168,10 @@ namespace HW2.Store
             if (Warehouse.HasEnoughProduct(product, count) == false)
                 throw new InvalidOperationException();
 
-            Warehouse.TakeProducts(product, count);
-
             base.Add(product, count);
         }
 
-        public Order Order()
-        {
-            return new Order(Products);
-        }
+        public Order Order() => new Order(Products);
 
         public void Cancel()
         {
@@ -234,9 +220,6 @@ namespace HW2.Store
             Count -= count;
         }
 
-        public override string ToString()
-        {
-            return $"{Product} - {Count}";
-        }
+        public override string ToString() => $"{Product} - {Count}";
     }
 }
