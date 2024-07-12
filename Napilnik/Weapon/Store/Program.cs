@@ -1,4 +1,5 @@
-﻿using System.Drawing;
+﻿using System.Diagnostics.Metrics;
+using System.Drawing;
 
 namespace HW2.Store
 {
@@ -171,8 +172,13 @@ namespace HW2.Store
             base.Add(product, count);
         }
 
-        public Order Order() => new Order(Products);
+        public Order Order()
+        {
+            foreach (Cell cell in Products.Values)
+                Warehouse.TakeProducts(cell.Product, cell.Count);
 
+            return new Order(Products);
+        }
         public void Cancel()
         {
             foreach (Cell cell in Products.Values)
