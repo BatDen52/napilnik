@@ -214,45 +214,114 @@ namespace CleanCodeHW9
 {
     //9. 27. В функции можно использовать функции её уровня и на один ниже Задание. Проведите рефакторинг
 
-    // - тут нужен MVP PassiveView
     using Crestron.SimplSharp.CrestronData;
+    using Crestron.SimplSharp.CrestronIO;
     using Crestron.SimplSharp.SQLite;
     using System.Reflection;
+    using System.Security.Cryptography;
+    using System.Text;
     using System.Windows.Forms;
 
-    class VoitingDataBase
+    class Program
     {
-        private TextBox passportTextbox;
-        private Label textResult;
-
-        public class Form1 : Form
+        private static void Main()
         {
-            internal static byte[] ComputeSha256Hash(string rawData)
-            {
-                throw new NotImplementedException();
-            }
+            new VoitingPresenter(new VoitingView());
         }
+    }
 
-        private void checkButton_Click(object sender, EventArgs e)
+    interface IVoitingView
+    {
+        void ShowResult(string result);
+        void SetPresenter(VoitingPresenter voitingPresenter);
+        void ShowMessage(string text);
+    }
+
+    class VoitingView : Form, IVoitingView
+    {
+        private TextBox _passportTextbox;
+        private Label _textResult;
+        private VoitingPresenter _presenter;
+
+        public void SetPresenter(VoitingPresenter presenter) => _presenter = presenter;
+
+        public void CheckButtonClick(object sender, EventArgs e)
         {
-            string passportData = passportTextbox.Text.Trim().Replace(" ", string.Empty);
+            string passportData = _passportTextbox.Text.Trim().Replace(" ", string.Empty);
 
             if (InputIsValid(passportData) == false)
                 return;
 
-            if (TryGetData(passportData, out DataTable dataTable))
-                ShowResult(dataTable);
+            _presenter.GetData(passportData);
         }
 
-        private bool TryGetData(string passportData, out DataTable dataTable)
+        public void ShowResult(string result) => _textResult.Text = result;
+
+        public void ShowMessage(string text) => MessageBox.Show(text);
+
+        private bool InputIsValid(string rawData)
         {
-            SQLiteConnection connection = CreateConnection("db");
+            const int PassportDataLength = 10;
+
+            if (string.IsNullOrWhiteSpace(rawData))
+            {
+                ShowMessage("Введите серию и номер паспорта");
+                return false;
+            }
+
+            if (rawData.Length < PassportDataLength)
+            {
+                ShowResult("Неверный формат серии или номера паспорта");
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    class VoitingPresenter
+    {
+        private readonly IVoitingView _view;
+        private readonly VoitingModel _model;
+
+        public VoitingPresenter(IVoitingView view)
+        {
+            _view = view ?? throw new ArgumentException(nameof(_view));
+            _model = new VoitingModel(new SHA256HashGenerator());
+
+            _view.SetPresenter(this);
+        }
+
+        public void GetData(string passportData)
+        {
+            try
+            {
+                _view.ShowResult(_model.TryGetData(passportData, out DataTable dataTable));
+            }
+            catch (FileNotFoundException exception) 
+            {
+                _view.ShowMessage(exception.Message);
+            }
+        }
+    }
+
+    class VoitingModel
+    {
+        private readonly IHashGenerator _hashGenerator;
+        private string _dbName = "db";
+
+        public VoitingModel(IHashGenerator hashGenerator) =>
+            _hashGenerator = hashGenerator ?? throw new ArgumentNullException(nameof(hashGenerator));
+
+        public string TryGetData(string passportData, out DataTable dataTable)
+        {
+            SQLiteConnection connection = CreateConnection(_dbName);
             dataTable = null;
 
             try
             {
                 connection.Open();
-                string commandText = $"select * from passports where num='{Form1.ComputeSha256Hash(passportData)}' limit 1;";
+                string commandText = $"select * from passports where num='{_hashGenerator.GetHash(passportData)}' limit 1;";
                 dataTable = GetDataFromDB(commandText, connection);
                 connection.Close();
             }
@@ -261,10 +330,25 @@ namespace CleanCodeHW9
                 const int MissingDbCode = 1;
 
                 if (ex.ErrorCode == MissingDbCode)
-                    MessageBox.Show("Файл db.sqlite не найден. Положите файл в папку вместе с exe.");
+                    throw new FileNotFoundException($"Файл {_dbName}.sqlite не найден. Положите файл в папку вместе с exe.");
             }
 
-            return dataTable != null;
+            return GetResult(dataTable, passportData);
+        }
+
+        private string GetResult(DataTable dataTable, string passportData)
+        {
+            if (dataTable.Rows.Count > 0)
+            {
+                if (Convert.ToBoolean(dataTable.Rows[0].ItemArray[1]))
+                    return "По паспорту «" + passportData + "» доступ к бюллетеню на дистанционном электронном голосовании ПРЕДОСТАВЛЕН";
+                else
+                    return "По паспорту «" + passportData + "» доступ к бюллетеню на дистанционном электронном голосовании НЕ ПРЕДОСТАВЛЯЛСЯ";
+            }
+            else
+            {
+                return "Паспорт «" + passportData + "» в списке участников дистанционного голосования НЕ НАЙДЕН";
+            }
         }
 
         private static SQLiteConnection CreateConnection(string dbName)
@@ -276,21 +360,6 @@ namespace CleanCodeHW9
 
         private static string GetLocation() => Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
 
-        private void ShowResult(DataTable dataTable1)
-        {
-            if (dataTable1.Rows.Count > 0)
-            {
-                if (Convert.ToBoolean(dataTable1.Rows[0].ItemArray[1]))
-                    textResult.Text = "По паспорту «" + passportTextbox.Text + "» доступ к бюллетеню на дистанционном электронном голосовании ПРЕДОСТАВЛЕН";
-                else
-                    textResult.Text = "По паспорту «" + passportTextbox.Text + "» доступ к бюллетеню на дистанционном электронном голосовании НЕ ПРЕДОСТАВЛЯЛСЯ";
-            }
-            else
-            {
-                textResult.Text = "Паспорт «" + passportTextbox.Text + "» в списке участников дистанционного голосования НЕ НАЙДЕН";
-            }
-        }
-
         private DataTable GetDataFromDB(string commandText, SQLiteConnection connection)
         {
             SQLiteDataAdapter sqLiteDataAdapter = new SQLiteDataAdapter(new SQLiteCommand(commandText, connection));
@@ -299,25 +368,24 @@ namespace CleanCodeHW9
 
             return dataTable;
         }
+    }
 
-        private bool InputIsValid(string rawData)
-        {
-            const int PassportDataLength = 10;
+    public interface IHashGenerator
+    {
+        public string GetHash(string input);
+    }
 
-            if (string.IsNullOrWhiteSpace(rawData))
-            {
-                MessageBox.Show("Введите серию и номер паспорта");
-                return false;
-            }
+    public abstract class HashGenerator : IHashGenerator
+    {
+        public string GetHash(string input) =>
+            Convert.ToHexString(HashData(Encoding.UTF8.GetBytes(input)));
 
-            if (rawData.Length < PassportDataLength)
-            {
-                textResult.Text = "Неверный формат серии или номера паспорта";
-                return false;
-            }
+        protected abstract byte[] HashData(byte[] bytes);
+    }
 
-            return true;
-        }
+    public class SHA256HashGenerator : HashGenerator
+    {
+        protected override byte[] HashData(byte[] bytes) => SHA256.HashData(bytes);
     }
 }
 
