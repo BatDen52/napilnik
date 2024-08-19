@@ -5,6 +5,9 @@
     {
         public static int Clamp(int value, int min, int max)
         {
+            if (min > max)
+                throw new ArgumentException("min is greater than max");
+
             if (value < min)
                 return min;
             else if (value > max)
@@ -38,13 +41,27 @@ namespace CleanCodeHW3
     class Weapon
     {
         private const int BulletPerShoot = 1;
-        private const int Zero = 0;//Думал еще в сторону EmptyCount и вообе целесообразности этой константы, но все так все.
+        private const int Zero = 0;//Думал еще в сторону EmptyCount и вообще целесообразности этой константы, но все так все.
 
         private int _bulletsCount;
 
-        public bool CanShoot() => _bulletsCount > Zero;
+        public Weapon(int bulletsCount)
+        {
+            if (bulletsCount < Zero)
+                throw new ArgumentOutOfRangeException(nameof(bulletsCount) + " is not valid");
 
-        public void Shoot() => _bulletsCount -= BulletPerShoot;
+            _bulletsCount = bulletsCount;
+        }
+
+        public bool CanShoot => _bulletsCount > Zero;
+
+        public void Shoot()
+        {
+            if (CanShoot == false)
+                throw new InvalidOperationException();
+
+            _bulletsCount -= BulletPerShoot;
+        }
     }
 }
 
@@ -56,7 +73,7 @@ namespace CleanCodeHW4
         public void Main()
         {
             int armySize = 10;
-            int coinsCount = 10;
+            int coins = 10;
             string name = "Vladislav";
         }
     }
@@ -74,7 +91,7 @@ namespace CleanCodeHW5
 namespace CleanCodeHW6
 {
     //6. 15. Имена классов и объектов должны предоставлять собой существительные Задание. Переименуйте классы
-    class Player { }
+    class PlayerStats { }
     class Attacker { }
     class TargetFollower { }
     class UnitFactory
@@ -102,12 +119,12 @@ namespace CleanCodeHW7
             //Создание объекта на карте
         }
 
-        public static void CalculateChance()
+        public static void SetRandomChance()
         {
             _chance = Random.Range(0, 100);
         }
 
-        public static int GetSalary(int hoursWorked)
+        public static int CalculateSalary(int hoursWorked)
         {
             return _hourlyRate * hoursWorked;
         }
@@ -119,6 +136,20 @@ namespace CleanCodeHW8
     //8. 20. Группировка полей по префиксу Задание. Поправьте код
     public class Player
     {
+        public Player(string name, int age, Mover mover, Weapon weapon)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException(nameof(name) + " is not valid");
+
+            if (age < 0)
+                throw new ArgumentOutOfRangeException(nameof(age) + " is not valid");
+
+            Name = name;
+            Age = age;
+            Mover = mover ?? throw new ArgumentNullException(nameof(mover));
+            Weapon = weapon ?? throw new ArgumentNullException(nameof(weapon));
+        }
+
         public string Name { get; private set; }
         public int Age { get; private set; }
         public Mover Mover { get; private set; }
@@ -127,6 +158,25 @@ namespace CleanCodeHW8
 
     public class Mover
     {
+        public Mover(float directionX, float directionY, float speed)
+        {
+            int minDirectionValue = -1;
+            int maxDirectionValue = 1;
+
+            if (directionX < minDirectionValue || directionX > maxDirectionValue)
+                throw new ArgumentOutOfRangeException(nameof(directionX) + " is not valid");
+
+            if (directionY < minDirectionValue || directionY > maxDirectionValue)
+                throw new ArgumentOutOfRangeException(nameof(directionY) + " is not valid");
+
+            if (speed < 0)
+                throw new ArgumentOutOfRangeException(nameof(speed) + " is not valid");
+
+            DirectionX = directionX;
+            DirectionY = directionY;
+            Speed = speed;
+        }
+
         public float DirectionX { get; private set; }
         public float DirectionY { get; private set; }
         public float Speed { get; private set; }
@@ -136,6 +186,18 @@ namespace CleanCodeHW8
 
     public class Weapon
     {
+        public Weapon(int damage, float cooldown)
+        {
+            if (damage < 0)
+                throw new ArgumentOutOfRangeException(nameof(damage) + " is not valid");
+
+            if (cooldown < 0)
+                throw new ArgumentOutOfRangeException(nameof(cooldown) + " is not valid");
+
+            Damage = damage;
+            Cooldown = cooldown;
+        }
+
         public int Damage { get; private set; }
         public float Cooldown { get; private set; }
 
@@ -151,6 +213,8 @@ namespace CleanCodeHW8
 namespace CleanCodeHW9
 {
     //9. 27. В функции можно использовать функции её уровня и на один ниже Задание. Проведите рефакторинг
+
+    // - тут нужен MVP PassiveView
     using Crestron.SimplSharp.CrestronData;
     using Crestron.SimplSharp.SQLite;
     using System.Reflection;
@@ -270,9 +334,11 @@ namespace CleanCodeHW10
     {
         static void Main(string[] args)
         {
-            var orderForm = new OrderForm();
-            var systemId = orderForm.ShowForm();
-            var paymentHandler = PaymentSystemFactory.Create(systemId);
+            PaymentSystemFactory systemFactory = new PaymentSystemFactory();
+
+            var orderForm = new OrderForm(systemFactory.GetCatalogue());
+            orderForm.ShowForm();
+            var paymentHandler = new PaymentHandler(systemFactory, orderForm);
 
             paymentHandler?.ShowPaymentResult();
         }
@@ -280,9 +346,9 @@ namespace CleanCodeHW10
 
     public class PaymentSystemFactory
     {
-        private static Dictionary<string, Func<PaymentSystem>> _paymentSystemsCreators;
+        private Dictionary<string, Func<PaymentSystem>> _paymentSystemsCreators;
 
-        static PaymentSystemFactory()
+        public PaymentSystemFactory()
         {
             _paymentSystemsCreators = new Dictionary<string, Func<PaymentSystem>>() {
                 { "QIWI", CreateQIWI },
@@ -291,12 +357,12 @@ namespace CleanCodeHW10
             };
         }
 
-        public static string GetCatalogue()
+        public IEnumerable<string> GetCatalogue()
         {
-            return string.Join(", ", _paymentSystemsCreators.Keys);
+            return _paymentSystemsCreators.Keys;
         }
 
-        public static PaymentSystem Create(string systemId)
+        public PaymentSystem Create(string systemId)
         {
             if (string.IsNullOrWhiteSpace(systemId))
                 throw new ArgumentException("systemId is null or empty");
@@ -308,19 +374,19 @@ namespace CleanCodeHW10
             throw new ArgumentException("unknown systemId");
         }
 
-        private static PaymentSystem CreateCard()
+        private PaymentSystem CreateCard()
         {
             Console.WriteLine("Вызов API банка эмитера карты Card...");
             return new CardPaymentSystem();
         }
 
-        private static PaymentSystem CreateWebMoney()
+        private PaymentSystem CreateWebMoney()
         {
             Console.WriteLine("Вызов API WebMoney...");
             return new WebMoneyPaymentSystem();
         }
 
-        private static PaymentSystem CreateQIWI()
+        private PaymentSystem CreateQIWI()
         {
             Console.WriteLine("Перевод на страницу QIWI...");
             return new QiwiPaymentSystem();
@@ -329,40 +395,63 @@ namespace CleanCodeHW10
 
     public class OrderForm
     {
-        public string ShowForm()
-        {
-            Console.WriteLine($"Мы принимаем: {PaymentSystemFactory.GetCatalogue()}");
+        private IEnumerable<string> _systemsCatalog;
 
-            //симуляция веб интерфейса
-            Console.WriteLine("Какое системой вы хотите совершить оплату?");
-            return Console.ReadLine();
+        public OrderForm(IEnumerable<string> systemsCatalog)
+        {
+            _systemsCatalog = systemsCatalog;
+        }
+
+        public string SystemId { get; private set; }
+
+        public void ShowForm()
+        {
+            do
+            {
+                Console.WriteLine($"Мы принимаем: {string.Join(", ", _systemsCatalog)}");
+
+                //симуляция веб интерфейса
+                Console.WriteLine("Какое системой вы хотите совершить оплату?");
+                SystemId = Console.ReadLine();
+            }
+            while (_systemsCatalog.Any(i => i == SystemId) == false);
+        }
+    }
+
+    public class PaymentHandler
+    {
+        private PaymentSystem _paymentSystem;
+
+        public PaymentHandler(PaymentSystemFactory systemFactory, OrderForm orderForm)
+        {
+            _paymentSystem = systemFactory.Create(orderForm.SystemId);
+        }
+
+        public void ShowPaymentResult()
+        {
+            Console.WriteLine($"Вы оплатили с помощью {_paymentSystem.Id}");
+
+            if (_paymentSystem.PaymentVerification())
+                Console.WriteLine("Оплата прошла успешно!");
+            else
+                Console.WriteLine("Что-то пошло не так...");
         }
     }
 
     public abstract class PaymentSystem
     {
-        public readonly string Id;
-
         protected PaymentSystem(string id) => Id = id;
 
-        public void ShowPaymentResult()
-        {
-            Console.WriteLine($"Вы оплатили с помощью {Id}");
+        public string Id { get; }
 
-            if (PaymentVerification())
-                Console.WriteLine("Оплата прошла успешно!");
-            else
-                Console.WriteLine("Что-то пошло не так...");
-        }
-
-        protected abstract bool PaymentVerification();
+        public abstract bool PaymentVerification();
     }
 
     public class WebMoneyPaymentSystem : PaymentSystem
     {
         public WebMoneyPaymentSystem() : base("WebMoney") { }
 
-        protected override bool PaymentVerification()
+        public override bool PaymentVerification()
         {
             Console.WriteLine($"Проверка платежа через {Id}...");
             return true;
@@ -373,7 +462,7 @@ namespace CleanCodeHW10
     {
         public CardPaymentSystem() : base("Card") { }
 
-        protected override bool PaymentVerification()
+        public override bool PaymentVerification()
         {
             Console.WriteLine($"Проверка платежа через {Id}...");
             return true;
@@ -384,7 +473,7 @@ namespace CleanCodeHW10
     {
         public QiwiPaymentSystem() : base("QIWI") { }
 
-        protected override bool PaymentVerification()
+        public override bool PaymentVerification()
         {
             Console.WriteLine($"Проверка платежа через {Id}...");
             return true;
