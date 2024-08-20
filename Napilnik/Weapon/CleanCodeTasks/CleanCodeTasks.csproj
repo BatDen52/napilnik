@@ -8,4 +8,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Crestron.SimplSharp.SDK.Library" Version="2.20.66" />
+  </ItemGroup>
+
 </Project>

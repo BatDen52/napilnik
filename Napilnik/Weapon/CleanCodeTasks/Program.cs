@@ -53,7 +53,7 @@ namespace CleanCodeHW3
             _bulletsCount = bulletsCount;
         }
 
-        public bool CanShoot => _bulletsCount > Zero;
+        public bool CanShoot => _bulletsCount > BulletPerShoot;
 
         public void Shoot()
         {
@@ -150,25 +150,22 @@ namespace CleanCodeHW8
             Weapon = weapon ?? throw new ArgumentNullException(nameof(weapon));
         }
 
-        public string Name { get; private set; }
-        public int Age { get; private set; }
-        public Mover Mover { get; private set; }
-        public Weapon Weapon { get; private set; }
+        public string Name { get; }
+        public int Age { get; }
+        public Mover Mover { get; }
+        public Weapon Weapon { get; }
     }
 
     public class Mover
     {
+        private const int MinDirectionValue = -1;
+        private const int MaxDirectionValue = 1;
+
+        private float _directionX;
+        private float _directionY;
+
         public Mover(float directionX, float directionY, float speed)
         {
-            int minDirectionValue = -1;
-            int maxDirectionValue = 1;
-
-            if (directionX < minDirectionValue || directionX > maxDirectionValue)
-                throw new ArgumentOutOfRangeException(nameof(directionX) + " is not valid");
-
-            if (directionY < minDirectionValue || directionY > maxDirectionValue)
-                throw new ArgumentOutOfRangeException(nameof(directionY) + " is not valid");
-
             if (speed < 0)
                 throw new ArgumentOutOfRangeException(nameof(speed) + " is not valid");
 
@@ -177,9 +174,29 @@ namespace CleanCodeHW8
             Speed = speed;
         }
 
-        public float DirectionX { get; private set; }
-        public float DirectionY { get; private set; }
-        public float Speed { get; private set; }
+        public float Speed { get; }
+        public float DirectionX
+        {
+            get => _directionX;
+            private set
+            {
+                if (value < MinDirectionValue || value > MaxDirectionValue)
+                    throw new ArgumentOutOfRangeException(nameof(DirectionX) + " is not valid");
+
+                _directionX = value;
+            }
+        }
+        public float DirectionY
+        {
+            get => _directionY;
+            private set
+            {
+                if (value < MinDirectionValue || value > MaxDirectionValue)
+                    throw new ArgumentOutOfRangeException(nameof(DirectionY) + " is not valid");
+
+                _directionY = value;
+            }
+        }
 
         public void Move() { }
     }
@@ -198,8 +215,8 @@ namespace CleanCodeHW8
             Cooldown = cooldown;
         }
 
-        public int Damage { get; private set; }
-        public float Cooldown { get; private set; }
+        public int Damage { get; }
+        public float Cooldown { get; }
 
         public void Attack() { }
 
@@ -298,7 +315,7 @@ namespace CleanCodeHW9
             {
                 _view.ShowResult(_model.TryGetData(passportData, out DataTable dataTable));
             }
-            catch (FileNotFoundException exception) 
+            catch (FileNotFoundException exception)
             {
                 _view.ShowMessage(exception.Message);
             }
