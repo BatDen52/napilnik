@@ -1,7 +1,4 @@
-﻿using System.Diagnostics.Metrics;
-using System.Drawing;
-
-namespace HW2.Store
+﻿namespace HW2.Store
 {
     class Program
     {

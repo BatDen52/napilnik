@@ -26,6 +26,9 @@ namespace CleanCodeHW2
     {
         public static int FindIndex(int[] array, int element)
         {
+            if (array == null)
+                throw new ArgumentNullException("array");
+
             for (int i = 0; i < array.Length; i++)
                 if (array[i] == element)
                     return i;
@@ -231,6 +234,49 @@ namespace CleanCodeHW9
 {
     //9. 27. В функции можно использовать функции её уровня и на один ниже Задание. Проведите рефакторинг
 
+    /*
+     Не нужно всю логику запихивать в класс модели. В реализациях паттернов семейства MVx под "моделью" может пониматься целая система классов. Не забываем про SRP. Один класс отвечает за получение DataTable из БД (можно назвать DatabaseContext), второй за обработку этих данных (работу с DataTable, можно назвать Repository). Он, если строк нет, то возвращает null. Третий, обработку результата (Service) если результат null, бросает какое то исключение по типу "PassportNotFoundException" и передает в конструктор исключения данные паспорта чтобы в блоке catch к ним обратиться. 
+
+Сервис как раз будет лежать в презентере и к нему будут обращаться за результатом. Результатом выполнения метода может быть либо объект, который содержит Convert.ToBoolean(dataTable.Rows[0].ItemArray[1]) (Объект можно назвать Citizen), либо PassportNotFoundException. 
+
+Слой View не должен проводить никаких операций над данными, которые передаются в презентер.
+Для логики string passportData = _passportTextbox.Text.Trim().Replace(" ", string.Empty); и проверок if (string.IsNullOrWhiteSpace(rawData)) и if (rawData.Length < PassportDataLength) лучше создать класс Passport. Он эти проверки будет делать в конструкторе и, если данные не подходят, выбрасывать исключения. Таким образом, если есть экземпляр класса Passport, у него всегда будут корректные данные. Создаваться паспорт будет в презентере в методе GetData
+
+Метод SetPresenter лучше заменить на фабрику в конструктор. Да, в юнити возможен только такой подход, но в других местах это плохая практика. 
+class PresenterFactory
+{
+    private HashGenerator _hashGenerator;
+    public PresenterFactory(HashGenerator hashGenerator)
+    {
+        _hashGenerator = hashGenerator ?? throw new ArgumentNullException(nameof(hashGenerator));
+    }
+    public VoitingPresenter Create(IVoitingView voitingView)
+    {
+        VoitingModel model = new VoitingModel(_hashGenerator);
+        return new VoitingPresenter(voitingView, model);
+    }
+}
+
+Вызывать ее нужно будет так:
+ public VoitingView(PresenterFactory presenterFactory) =>
+     _presenter = presenterFactory.Create(this);
+
+
+Строки с результатом для отображения в модели присутствовать не должны. Они определяются в презентере. (Например, "По паспорту «" + passportData + "» доступ к бюллетеню на дистанционном электронном голосовании ПРЕДОСТАВЛЕН";)
+
+В этой реализации появляется несколько классов и некоторые из них существуют только для того чтобы передать данные в какой то обертке (класс Citizen содержит только bool) или для проверки и содержания корректных данных (класс Passport)
+
+Общий код метода презентера в блоке try:
+Создание паспорта
+Обращение к сервису и получение Citizen
+По свойству ситизена определение сообщения, предоставлялся ли доступ
+Отображение сообщения
+
+Дополнительно для репозитория было бы хорошо сделать интерфейс чтобы полностью отвязаться от БД на основе SQL 
+Хэширование может происходить на уровне репозитория или сервиса (в зависимости от того, получает ли ситизен в конструткор паспорт)
+Презентер ничего не должен знать о БД (классе DataTable). Ему все равно откуда появляется Citizen, из БД, обращения к удаленному серверу или рандомом.
+     */
+
     using Crestron.SimplSharp.CrestronData;
     using Crestron.SimplSharp.CrestronIO;
     using Crestron.SimplSharp.SQLite;
@@ -423,7 +469,7 @@ namespace CleanCodeHW10
 
             var orderForm = new OrderForm(systemFactory.GetCatalogue());
             orderForm.ShowForm();
-            var paymentHandler = new PaymentHandler(systemFactory, orderForm);
+            var paymentHandler = new PaymentHandler(systemFactory.GetCreator(orderForm.SystemId));
 
             paymentHandler?.ShowPaymentResult();
         }
@@ -447,35 +493,22 @@ namespace CleanCodeHW10
             return _paymentSystemsCreators.Keys;
         }
 
-        public PaymentSystem Create(string systemId)
+        public Func<PaymentSystem> GetCreator(string systemId)
         {
             if (string.IsNullOrWhiteSpace(systemId))
                 throw new ArgumentException("systemId is null or empty");
 
-            foreach (var creator in _paymentSystemsCreators)
-                if (creator.Key == systemId)
-                    return creator.Value.Invoke();
+            if (_paymentSystemsCreators.TryGetValue(systemId, out Func<PaymentSystem> creator))
+                return creator;
 
             throw new ArgumentException("unknown systemId");
         }
 
-        private PaymentSystem CreateCard()
-        {
-            Console.WriteLine("Вызов API банка эмитера карты Card...");
-            return new CardPaymentSystem();
-        }
+        private PaymentSystem CreateCard() => new CardPaymentSystem();
 
-        private PaymentSystem CreateWebMoney()
-        {
-            Console.WriteLine("Вызов API WebMoney...");
-            return new WebMoneyPaymentSystem();
-        }
+        private PaymentSystem CreateWebMoney() => new WebMoneyPaymentSystem();
 
-        private PaymentSystem CreateQIWI()
-        {
-            Console.WriteLine("Перевод на страницу QIWI...");
-            return new QiwiPaymentSystem();
-        }
+        private PaymentSystem CreateQIWI() => new QiwiPaymentSystem();
     }
 
     public class OrderForm
@@ -507,9 +540,12 @@ namespace CleanCodeHW10
     {
         private PaymentSystem _paymentSystem;
 
-        public PaymentHandler(PaymentSystemFactory systemFactory, OrderForm orderForm)
+        public PaymentHandler(Func<PaymentSystem> systemCreator)
         {
-            _paymentSystem = systemFactory.Create(orderForm.SystemId);
+            if (systemCreator == null)
+                throw new ArgumentNullException("systemCreator");
+
+            _paymentSystem = systemCreator.Invoke();
         }
 
         public void ShowPaymentResult()
@@ -529,7 +565,11 @@ namespace CleanCodeHW10
 
         public string Id { get; }
 
-        public abstract bool PaymentVerification();
+        public virtual bool PaymentVerification()
+        {
+            Console.WriteLine($"Проверка платежа через {Id}...");
+            return true;
+        }
     }
 
     public class WebMoneyPaymentSystem : PaymentSystem
@@ -538,8 +578,8 @@ namespace CleanCodeHW10
 
         public override bool PaymentVerification()
         {
-            Console.WriteLine($"Проверка платежа через {Id}...");
-            return true;
+            Console.WriteLine("Вызов API WebMoney...");
+            return base.PaymentVerification();
         }
     }
 
@@ -549,8 +589,8 @@ namespace CleanCodeHW10
 
         public override bool PaymentVerification()
         {
-            Console.WriteLine($"Проверка платежа через {Id}...");
-            return true;
+            Console.WriteLine("Вызов API банка эмитера карты Card...");
+            return base.PaymentVerification();
         }
     }
 
@@ -560,8 +600,8 @@ namespace CleanCodeHW10
 
         public override bool PaymentVerification()
         {
-            Console.WriteLine($"Проверка платежа через {Id}...");
-            return true;
+            Console.WriteLine("Перевод на страницу QIWI...");
+            return base.PaymentVerification();
         }
     }
 }
