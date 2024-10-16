@@ -233,50 +233,6 @@ namespace CleanCodeHW8
 namespace CleanCodeHW9
 {
     //9. 27. В функции можно использовать функции её уровня и на один ниже Задание. Проведите рефакторинг
-
-    /*
-     Не нужно всю логику запихивать в класс модели. В реализациях паттернов семейства MVx под "моделью" может пониматься целая система классов. Не забываем про SRP. Один класс отвечает за получение DataTable из БД (можно назвать DatabaseContext), второй за обработку этих данных (работу с DataTable, можно назвать Repository). Он, если строк нет, то возвращает null. Третий, обработку результата (Service) если результат null, бросает какое то исключение по типу "PassportNotFoundException" и передает в конструктор исключения данные паспорта чтобы в блоке catch к ним обратиться. 
-
-Сервис как раз будет лежать в презентере и к нему будут обращаться за результатом. Результатом выполнения метода может быть либо объект, который содержит Convert.ToBoolean(dataTable.Rows[0].ItemArray[1]) (Объект можно назвать Citizen), либо PassportNotFoundException. 
-
-Слой View не должен проводить никаких операций над данными, которые передаются в презентер.
-Для логики string passportData = _passportTextbox.Text.Trim().Replace(" ", string.Empty); и проверок if (string.IsNullOrWhiteSpace(rawData)) и if (rawData.Length < PassportDataLength) лучше создать класс Passport. Он эти проверки будет делать в конструкторе и, если данные не подходят, выбрасывать исключения. Таким образом, если есть экземпляр класса Passport, у него всегда будут корректные данные. Создаваться паспорт будет в презентере в методе GetData
-
-Метод SetPresenter лучше заменить на фабрику в конструктор. Да, в юнити возможен только такой подход, но в других местах это плохая практика. 
-class PresenterFactory
-{
-    private HashGenerator _hashGenerator;
-    public PresenterFactory(HashGenerator hashGenerator)
-    {
-        _hashGenerator = hashGenerator ?? throw new ArgumentNullException(nameof(hashGenerator));
-    }
-    public VoitingPresenter Create(IVoitingView voitingView)
-    {
-        VoitingModel model = new VoitingModel(_hashGenerator);
-        return new VoitingPresenter(voitingView, model);
-    }
-}
-
-Вызывать ее нужно будет так:
- public VoitingView(PresenterFactory presenterFactory) =>
-     _presenter = presenterFactory.Create(this);
-
-
-Строки с результатом для отображения в модели присутствовать не должны. Они определяются в презентере. (Например, "По паспорту «" + passportData + "» доступ к бюллетеню на дистанционном электронном голосовании ПРЕДОСТАВЛЕН";)
-
-В этой реализации появляется несколько классов и некоторые из них существуют только для того чтобы передать данные в какой то обертке (класс Citizen содержит только bool) или для проверки и содержания корректных данных (класс Passport)
-
-Общий код метода презентера в блоке try:
-Создание паспорта
-Обращение к сервису и получение Citizen
-По свойству ситизена определение сообщения, предоставлялся ли доступ
-Отображение сообщения
-
-Дополнительно для репозитория было бы хорошо сделать интерфейс чтобы полностью отвязаться от БД на основе SQL 
-Хэширование может происходить на уровне репозитория или сервиса (в зависимости от того, получает ли ситизен в конструткор паспорт)
-Презентер ничего не должен знать о БД (классе DataTable). Ему все равно откуда появляется Citizen, из БД, обращения к удаленному серверу или рандомом.
-     */
-
     using Crestron.SimplSharp.CrestronData;
     using Crestron.SimplSharp.CrestronIO;
     using Crestron.SimplSharp.SQLite;
@@ -289,15 +245,41 @@ class PresenterFactory
     {
         private static void Main()
         {
-            new VoitingPresenter(new VoitingView());
+            new VoitingView(new PresenterFactory(new SHA256HashGenerator()));
         }
     }
 
     interface IVoitingView
     {
         void ShowResult(string result);
-        void SetPresenter(VoitingPresenter voitingPresenter);
         void ShowMessage(string text);
+    }
+
+    public interface IHashGenerator
+    {
+        public string GetHash(string input);
+    }
+
+    public interface IDatabaseContext
+    {
+        DataTable TryGetData(string passportHashData);
+    }
+
+    class PresenterFactory
+    {
+        private IHashGenerator _hashGenerator;
+
+        public PresenterFactory(IHashGenerator hashGenerator)
+            => _hashGenerator = hashGenerator ?? throw new ArgumentNullException(nameof(hashGenerator));
+
+        public VoitingPresenter Create(IVoitingView voitingView)
+        {
+            if (voitingView == null)
+                throw new ArgumentNullException(nameof(voitingView));
+
+            Service model = new Service(_hashGenerator);
+            return new VoitingPresenter(voitingView, model);
+        }
     }
 
     class VoitingView : Form, IVoitingView
@@ -306,85 +288,105 @@ class PresenterFactory
         private Label _textResult;
         private VoitingPresenter _presenter;
 
-        public void SetPresenter(VoitingPresenter presenter) => _presenter = presenter;
+        public VoitingView(PresenterFactory presenterFactory) => _presenter = presenterFactory.Create(this);
 
-        public void CheckButtonClick(object sender, EventArgs e)
-        {
-            string passportData = _passportTextbox.Text.Trim().Replace(" ", string.Empty);
-
-            if (InputIsValid(passportData) == false)
-                return;
-
-            _presenter.GetData(passportData);
-        }
+        public void CheckButtonClick(object sender, EventArgs e) => _presenter.GetData(_passportTextbox.Text);
 
         public void ShowResult(string result) => _textResult.Text = result;
 
         public void ShowMessage(string text) => MessageBox.Show(text);
-
-        private bool InputIsValid(string rawData)
-        {
-            const int PassportDataLength = 10;
-
-            if (string.IsNullOrWhiteSpace(rawData))
-            {
-                ShowMessage("Введите серию и номер паспорта");
-                return false;
-            }
-
-            if (rawData.Length < PassportDataLength)
-            {
-                ShowResult("Неверный формат серии или номера паспорта");
-                return false;
-            }
-
-            return true;
-        }
     }
 
     class VoitingPresenter
     {
         private readonly IVoitingView _view;
-        private readonly VoitingModel _model;
+        private readonly Service _model;
 
-        public VoitingPresenter(IVoitingView view)
+        public VoitingPresenter(IVoitingView view, Service model)
         {
-            _view = view ?? throw new ArgumentException(nameof(_view));
-            _model = new VoitingModel(new SHA256HashGenerator());
-
-            _view.SetPresenter(this);
+            _view = view ?? throw new ArgumentException(nameof(view));
+            _model = model ?? throw new ArgumentException(nameof(model));
         }
 
         public void GetData(string passportData)
         {
             try
             {
-                _view.ShowResult(_model.TryGetData(passportData, out DataTable dataTable));
+                Citizen citizen = _model.GetCitizen(new Pass(passportData));
+                _view.ShowResult(GetMessage(citizen, passportData));
             }
-            catch (FileNotFoundException exception)
+            catch (PassportNotFoundException exception)
+            {
+                _view.ShowMessage("Passport " + exception.PassportData + " not found");
+            }
+            catch (Exception exception)
             {
                 _view.ShowMessage(exception.Message);
             }
         }
+
+        private string GetMessage(Citizen citizen, string passportData)
+        {
+            if (citizen == null)
+                return "По паспорту «" + passportData + "» доступ к бюллетеню на дистанционном электронном голосовании ПРЕДОСТАВЛЕН";
+            else if (citizen.HasAccess)
+                return "По паспорту «" + passportData + "» доступ к бюллетеню на дистанционном электронном голосовании НЕ ПРЕДОСТАВЛЯЛСЯ";
+            else
+                return "Паспорт «" + passportData + "» в списке участников дистанционного голосования НЕ НАЙДЕН";
+        }
     }
 
-    class VoitingModel
+    class Pass
     {
+        private const int PassportDataLength = 10;
+
+        public Pass(string passportData)
+        {
+            passportData = passportData.Trim().Replace(" ", string.Empty);
+
+            if (string.IsNullOrWhiteSpace(passportData))
+                throw new ArgumentException("Введите серию и номер паспорта");
+
+            if (passportData.Length < PassportDataLength)
+                throw new ArgumentException("Неверный формат серии или номера паспорта");
+
+            Data = passportData;
+        }
+
+        public string Data { get; private set; }
+    }
+
+    class Service
+    {
+        private Repository _repository;
         private readonly IHashGenerator _hashGenerator;
+
+        public Service(IHashGenerator hashGenerator)
+        {
+            _hashGenerator = hashGenerator ?? throw new ArgumentNullException(nameof(hashGenerator));
+            _repository = new Repository(new DatabaseContext());
+        }
+
+        public Citizen GetCitizen(Pass pass)
+        {
+            return _repository.GetCitizen(_hashGenerator.GetHash(pass.Data))
+                    ?? throw new PassportNotFoundException(pass.Data);
+        }
+    }
+
+    class DatabaseContext : IDatabaseContext
+    {
         private string _dbName = "db";
 
-        public VoitingModel(IHashGenerator hashGenerator) =>
-            _hashGenerator = hashGenerator ?? throw new ArgumentNullException(nameof(hashGenerator));
-
-        public string TryGetData(string passportData, out DataTable dataTable)
+        public DataTable TryGetData(string passportHashData)
         {
             SQLiteConnection connection = CreateConnection(_dbName);
-            dataTable = null;
+            DataTable dataTable = null;
 
             try
             {
                 connection.Open();
-                string commandText = $"select * from passports where num='{_hashGenerator.GetHash(passportData)}' limit 1;";
+                string commandText = $"select * from passports where num='{passportHashData}' limit 1;";
                 dataTable = GetDataFromDB(commandText, connection);
                 connection.Close();
             }
@@ -396,22 +398,7 @@ class PresenterFactory
                     throw new FileNotFoundException($"Файл {_dbName}.sqlite не найден. Положите файл в папку вместе с exe.");
             }
 
-            return GetResult(dataTable, passportData);
-        }
-
-        private string GetResult(DataTable dataTable, string passportData)
-        {
-            if (dataTable.Rows.Count > 0)
-            {
-                if (Convert.ToBoolean(dataTable.Rows[0].ItemArray[1]))
-                    return "По паспорту «" + passportData + "» доступ к бюллетеню на дистанционном электронном голосовании ПРЕДОСТАВЛЕН";
-                else
-                    return "По паспорту «" + passportData + "» доступ к бюллетеню на дистанционном электронном голосовании НЕ ПРЕДОСТАВЛЯЛСЯ";
-            }
-            else
-            {
-                return "Паспорт «" + passportData + "» в списке участников дистанционного голосования НЕ НАЙДЕН";
-            }
+            return dataTable;
         }
 
         private static SQLiteConnection CreateConnection(string dbName)
@@ -433,9 +420,35 @@ class PresenterFactory
         }
     }
 
-    public interface IHashGenerator
+    class Repository
     {
-        public string GetHash(string input);
+        private IDatabaseContext _databaseContext;
+
+        public Repository(IDatabaseContext databaseContext) => _databaseContext = databaseContext;
+
+        public Citizen GetCitizen(string passportData)
+        {
+            DataTable dataTable = _databaseContext.TryGetData(passportData);
+
+            if (dataTable.Rows.Count == 0)
+                return null;
+
+            return new Citizen(Convert.ToBoolean(dataTable.Rows[0].ItemArray[1]));
+        }
+    }
+
+    class Citizen
+    {
+        public Citizen(bool hasAccess) => HasAccess = hasAccess;
+
+        public bool HasAccess { get; private set; }
+    }
+
+    class PassportNotFoundException : Exception
+    {
+        public PassportNotFoundException(string passportData) => PassportData = passportData;
+
+        public string PassportData { get; private set; }
     }
 
     public abstract class HashGenerator : IHashGenerator
